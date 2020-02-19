@@ -1,10 +1,14 @@
 language: java
 os: linux
 dist: xenial
-cache:
-  directories:
-    - $HOME/.m2
 jdk:
   - openjdk8
 install: true
 script: ./travis.sh
+before_cache:
+  - find $HOME/.gradle/caches/modules-2/ -name '*.lock' -delete
+  - find $HOME/.gradle/caches/modules-2/ -name 'gc.properties' -delete
+cache:
+  directories:
+    - $HOME/.gradle/caches/modules-2
+    - /tmp/gradles

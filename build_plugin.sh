@@ -56,9 +56,15 @@ done < "$PLUGINFILE"
 # we need gradle 6.2 for dependency verification
 GRADLE_VER=gradle-6.2
 if [[ ! -e "/tmp/$GRADLE_VER/bin/gradle" ]]; then
-	wget -q -O/tmp/gradle.zip "https://services.gradle.org/distributions/$GRADLE_VER-bin.zip"
-	echo 'b93a5f30d01195ec201e240f029c8b42d59c24086b8d1864112c83558e23cf8a */tmp/gradle.zip' | shasum -a256 -c
-	unzip -q /tmp/gradle.zip -d /tmp/
+	verify_gradle() {
+		echo 'b93a5f30d01195ec201e240f029c8b42d59c24086b8d1864112c83558e23cf8a */tmp/gradles/gradle.zip' | shasum -a256 -c
+	}
+	if ! verify_gradle; then
+		mkdir -p /tmp/gradles/
+		wget -q -O/tmp/gradles/gradle.zip "https://services.gradle.org/distributions/$GRADLE_VER-bin.zip"
+		verify_gradle
+	fi
+	unzip -q /tmp/gradles/gradle.zip -d /tmp/
 	[[ -e "/tmp/$GRADLE_VER/bin/gradle" ]]
 fi
 export GRADLE_HOME="/tmp/$GRADLE_VER/"
