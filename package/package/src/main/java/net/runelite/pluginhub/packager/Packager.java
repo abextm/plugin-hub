@@ -355,9 +355,9 @@ public class Packager
 				.map(name -> new File(PLUGIN_ROOT, name))
 				.collect(Collectors.toList());
 		}
-		else if (!Strings.isNullOrEmpty(System.getenv("TRAVIS_COMMIT_RANGE")))
+		else if (!Strings.isNullOrEmpty(System.getenv("PACKAGE_COMMIT_RANGE")))
 		{
-			Process gitdiff = new ProcessBuilder("git", "diff", "--name-only", System.getenv("TRAVIS_COMMIT_RANGE"))
+			Process gitdiff = new ProcessBuilder("git", "diff", "--name-only", System.getenv("PACKAGE_COMMIT_RANGE"))
 				.redirectError(ProcessBuilder.Redirect.INHERIT)
 				.start();
 
