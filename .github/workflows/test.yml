@@ -1,0 +1,26 @@
+on:
+  workflow_dispatch:
+  push:
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        fetch-depth: 0
+    - uses: actions/setup-java@v1
+      with:
+        java-version: 11
+    - name: foo
+      run: |
+        pushd package
+        wget -Oasyncprofiler.tgz https://github.com/jvm-profiling-tools/async-profiler/releases/download/v1.8.2/async-profiler-1.8.2-linux-x64.tar.gz
+        tar xzf asyncprofiler.tgz
+        ./gradlew -Dorg.gradle.jvmargs="-agentpath:$(pwd)/async-profiler-1.8.2-linux-x64/build/libasyncProfiler.so=start,file=$(pwd)/profile.collapsed,event=wall,threads,width=2000,interval=1" configure || true
+        ./gradlew --stop
+        popd
+    - uses: actions/upload-artifact@v2
+      with:
+        name: profile
+        path: package/profile.collapsed
+        retention-days: 1
