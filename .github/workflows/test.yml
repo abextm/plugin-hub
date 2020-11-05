@@ -21,6 +21,7 @@ jobs:
         tar xzf asyncprofiler.tgz
         ./gradlew -Dorg.gradle.jvmargs="-agentpath:$(pwd)/async-profiler-1.8.2-linux-x64/build/libasyncProfiler.so=start,file=$(pwd)/profile.collapsed,event=wall,threads,width=2000,interval=1" configure || true
         ./gradlew --stop
+        sleep 10s
         du -hs profile.collapsed
         zstd -z profile.collapsed -o profile.collapsed.zstd
         du -hs profile.collapsed.zstd
