@@ -19,11 +19,10 @@ jobs:
         pushd package
         wget -Oasyncprofiler.tgz https://github.com/jvm-profiling-tools/async-profiler/releases/download/v1.8.2/async-profiler-1.8.2-linux-x64.tar.gz
         tar xzf asyncprofiler.tgz
-        ./gradlew -Dorg.gradle.jvmargs="-agentpath:$(pwd)/async-profiler-1.8.2-linux-x64/build/libasyncProfiler.so=start,file=$(pwd)/profile.collapsed,event=wall,threads,width=2000,interval=1" configure || true
+        time GRADLE_OPTS="-agentpath:$(pwd)/async-profiler-1.8.2-linux-x64/build/libasyncProfiler.so=start,file=$(pwd)/wrapper.collapsed,event=wall,threads,width=2000,interval=1" ./gradlew -Dorg.gradle.jvmargs="-agentpath:$(pwd)/async-profiler-1.8.2-linux-x64/build/libasyncProfiler.so=start,file=$(pwd)/profile.collapsed,event=wall,threads,width=2000,interval=1" configure || true
         ./gradlew --stop
         sleep 10s
-        du -hs profile.collapsed
         zstd -z profile.collapsed -o profile.collapsed.zstd
-        du -hs profile.collapsed.zstd
-        curl --fail --user "$REPO_CREDS" --upload-file profile.collapsed.zstd "$REPO_ROOT/profile.collapsed.zstd"
+        zstd -z wrapper.collapsed -o wrapper.collapsed.zstd
+        curl --fail --user "$REPO_CREDS" --upload-file profile.collapsed.zstd "$REPO_ROOT/profile.collapsed.zstd"  --upload-file wrapper.collapsed.zstd "$REPO_ROOT/wrapper.collapsed.zstd"
         popd
