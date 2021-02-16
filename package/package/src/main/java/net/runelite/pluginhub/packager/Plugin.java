@@ -40,6 +40,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
@@ -78,6 +79,8 @@ import lombok.Value;
 import net.runelite.pluginhub.uploader.ExternalPluginManifest;
 import net.runelite.pluginhub.uploader.UploadConfiguration;
 import okhttp3.HttpUrl;
+import org.gradle.api.InvalidUserDataException;
+import org.gradle.tooling.BuildException;
 import org.gradle.tooling.CancellationTokenSource;
 import org.gradle.tooling.GradleConnectionException;
 import org.gradle.tooling.GradleConnector;
@@ -369,6 +372,17 @@ public class Plugin implements Closeable
 			}
 		}
 
+		{
+			File pinsFile = new File(repositoryDirectory, "gradle/verification-metadata.xml");
+			if (!pinsFile.exists())
+			{
+				try (InputStream emptyPinsFile = Plugin.class.getResourceAsStream("/emptyPins.xml"))
+				{
+					Files.copy(emptyPinsFile, pinsFile.toPath());
+				}
+			}
+		}
+
 		try (ProjectConnection con = GradleConnector.newConnector()
 			.forProjectDirectory(repositoryDirectory)
 			.useInstallation(GRADLE_HOME)
@@ -421,6 +435,20 @@ public class Plugin implements Closeable
 			}
 			else if (output instanceof GradleConnectionException)
 			{
+				for (Throwable ex = (Throwable) output; ex != null; ex = ex.getCause())
+				{
+					if (ex instanceof BuildException)
+					{
+						output = ex;
+					}
+
+					if (ex.getMessage().contains("Dependency verification"))
+					{
+						throw PluginBuildException.of(this, "dependency verification failed", ex)
+							.withHelp("Plugins with 3rd-party dependencies are required to pin their dependencies. See the readme:\n" +
+								"https://github.com/runelite/plugin-hub#third-party-dependencies\n");
+					}
+				}
 				throw PluginBuildException.of(this, "build failed", output);
 			}
 			throw new IllegalStateException(output.toString());
