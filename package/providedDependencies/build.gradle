@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 Abex
+ * Copyright (c) 2021 Abex
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -22,40 +22,28 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-plugins {
-	id "com.github.johnrengelman.shadow" version "6.1.0"
+
+repositories {
+	maven {
+		url = "https://repo.runelite.net"
+	}
+	mavenCentral()
 }
 
-allprojects {
-	version "2.0-SNAPSHOT"
-	group "net.runelite.pluginhub"
-
-	tasks.withType(AbstractArchiveTask) {
-		preserveFileTimestamps = false
-		reproducibleFileOrder = true
+configurations.all {
+	resolutionStrategy {
+		// This is safe because this library is only pulled in as a compile time dependency so
+		// no code from it should ever be executed
+		disableDependencyVerification()
 	}
 }
 
-subprojects {
-	apply plugin: "java"
-	apply plugin: "com.github.johnrengelman.shadow"
+def runeLiteVersion = rootProject.file("../runelite.version").text.trim();
 
-	sourceCompatibility = 1.8
-
-	shadowJar {
-		archiveFileName.set archiveBaseName.get() + "." + archiveExtension.get()
-	}
+dependencies {
+	runtimeOnly group: "net.runelite", name: "client", version: runeLiteVersion
+	runtimeOnly "org.projectlombok:lombok:1.18.4"
 }
 
-// we have this task then java -jar the output rather than using gradle run so
-// the daemon used to build this can be reused by a real plugin build
-task prep {
-	dependsOn ":package:shadowJar"
-	dependsOn ":initLib:shadowJar"
-	dependsOn ":providedAnnotationProcessors:shadowJar"
-	dependsOn ":providedDependencies:shadowJar"
-	doLast {
-		file("build").mkdirs()
-		file("build/gradleHome").write(gradle.gradleHomeDir.absolutePath)
-	}
-}
+
+

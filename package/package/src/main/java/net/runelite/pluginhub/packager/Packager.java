@@ -154,7 +154,7 @@ public class Packager implements Closeable
 				}
 				try (Closeable ignored = acquireBuild(p))
 				{
-					p.build(runeliteVersion);
+					p.build();
 					p.assembleManifest();
 				}
 				if (uploadConfig.isComplete())

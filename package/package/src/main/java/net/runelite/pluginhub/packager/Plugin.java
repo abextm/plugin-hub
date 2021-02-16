@@ -277,7 +277,7 @@ public class Plugin implements Closeable
 		waitAndCheck(gitcheckout, "git checkout", 2, TimeUnit.MINUTES);
 	}
 
-	public void build(String runeliteVersion) throws IOException, PluginBuildException
+	public void build() throws IOException, PluginBuildException
 	{
 		try (DirectoryStream<Path> ds = Files.newDirectoryStream(repositoryDirectory.toPath(), "**.{gradle,gradle.kts}"))
 		{
@@ -385,8 +385,9 @@ public class Plugin implements Closeable
 					"--init-script", new File("./package/target_init.gradle").getAbsolutePath())
 				.setEnvironmentVariables(ImmutableMap.of(
 					"runelite.pluginhub.package.lib", new File(Packager.PACKAGE_ROOT, "initLib/build/libs/initLib.jar").toString(),
-					"runelite.pluginhub.package.buildDir", buildDirectory.getAbsolutePath(),
-					"runelite.pluginhub.package.runeliteVersion", runeliteVersion))
+					"runelite.pluginhub.package.providedDependenciesLib", new File(Packager.PACKAGE_ROOT, "providedDependencies/build/libs/providedDependencies.jar").toString(),
+					"runelite.pluginhub.package.providedAnnotationProcessorsLib", new File(Packager.PACKAGE_ROOT, "providedAnnotationProcessors/build/libs/providedAnnotationProcessors.jar").toString(),
+					"runelite.pluginhub.package.buildDir", buildDirectory.getAbsolutePath()))
 				.setJvmArguments("-Xmx768M", "-XX:+UseParallelGC")
 				.setStandardOutput(log)
 				.setStandardError(log)

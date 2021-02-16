@@ -56,6 +56,6 @@ jar {
 }
 
 test {
-	dependsOn ":initLib:shadowJar"
+	dependsOn ":prep"
 	workingDir new File(project.rootDir, "../")
 }

@@ -63,18 +63,24 @@ allprojects {
 		}
 	}
 
-	task configured {
-		def runeLiteDeps = [
-			"client",
-			"runelite-api",
-			"http-api",
-		]
-		def version = System.getenv("runelite.pluginhub.package.runeliteVersion")
-		configurations.all {
-			resolutionStrategy.eachDependency { DependencyResolveDetails details ->
-				if (details.requested.group == "net.runelite" && details.requested.name in runeLiteDeps) {
-					details.useVersion version
-				}
+	def providedDeps = files(System.getenv("runelite.pluginhub.package.providedDependenciesLib"))
+	def providedAnnProcs = files(System.getenv("runelite.pluginhub.package.providedAnnotationProcessorsLib"))
+
+	configurations.compileOnly {
+		dependencies.whenObjectAdded { Dependency dep ->
+			if ((dep.group == "net.runelite" && dep.name == "client")
+				|| (dep.group == "org.projectlombok" && dep.name == "lombok" && dep.version == "1.18.4")) {
+				dependencies.remove(dep)
+				project.dependencies.compileOnly providedDeps
+			}
+		}
+	}
+
+	configurations.annotationProcessor {
+		dependencies.whenObjectAdded { Dependency dep ->
+			if (dep.group == "org.projectlombok" && dep.name == "lombok" && dep.version == "1.18.4") {
+				dependencies.remove(dep)
+				project.dependencies.annotationProcessor providedAnnProcs
 			}
 		}
 	}
