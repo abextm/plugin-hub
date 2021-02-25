@@ -33,6 +33,7 @@ jobs:
       run: |
         pushd package
         ./gradlew --build-cache prep
+        ./gradlew --build-cache --project-dir verification-template :verifyCore
         popd
     - name: build
       env:
