@@ -70,8 +70,11 @@ public class Deprecate
 		}
 
 		int tests = 0;
+		int matches = 0;
+		int plugins = 0;
 		for (ExternalPluginManifest man : manifests)
 		{
+			boolean matchedPlugin = false;
 			try (Response res = client.newCall(new Request.Builder()
 				.url(root.newBuilder()
 					.addPathSegment(man.getInternalName())
@@ -83,22 +86,32 @@ public class Deprecate
 				ZipInputStream jis = new ZipInputStream(new BufferedInputStream(res.body().byteStream()));
 				for (ZipEntry je; (je = jis.getNextEntry()) != null; )
 				{
-					test(man, je.getName(), jis);
+					if (test(man, je.getName(), jis))
+					{
+						matches++;
+						if (!matchedPlugin)
+						{
+							plugins++;
+							matchedPlugin = true;
+						}
+					}
 					tests++;
 				}
 			}
 		}
 
-		log.info("tested {} files", tests);
+		log.info("tested {} files {} matched in {} plugins", tests, matches, plugins);
 		System.exit(0);
 	}
 
-	private static void test(ExternalPluginManifest manifest, String filePath, InputStream is) throws Exception
+	private static boolean test(ExternalPluginManifest manifest, String filePath, InputStream is) throws Exception
 	{
 		byte[] data = ByteStreams.toByteArray(is);
-		if (Bytes.indexOf(data, "getUsername".getBytes(StandardCharsets.UTF_8)) != -1)
+		if (Bytes.indexOf(data, "net/runelite/api/widgets/WidgetInfo".getBytes(StandardCharsets.UTF_8)) != -1)
 		{
 			log.warn("{}: {} match", manifest.getSupport(), filePath);
+			return true;
 		}
+		return false;
 	}
 }
