@@ -5,11 +5,13 @@ import com.google.common.primitives.Bytes;
 import com.google.common.reflect.TypeToken;
 import com.google.gson.Gson;
 import java.io.BufferedInputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Properties;
 import java.util.jar.JarEntry;
 import java.util.jar.JarInputStream;
 import java.util.zip.ZipEntry;
@@ -25,9 +27,11 @@ import okio.BufferedSource;
 @Slf4j
 public class Deprecate
 {
+	private static OkHttpClient client;
+	
 	public static void main(String... args) throws Exception
 	{
-		OkHttpClient client = new OkHttpClient.Builder().build();
+		client = new OkHttpClient.Builder().build();
 		String version;
 		try (Response res = client.newCall(new Request.Builder()
 			.url("https://raw.githubusercontent.com/runelite/plugin-hub/master/runelite.version")
@@ -103,13 +107,35 @@ public class Deprecate
 		log.info("tested {} files {} matched in {} plugins", tests, matches, plugins);
 		System.exit(0);
 	}
+	
+	private static String pathToGH(ExternalPluginManifest manifest, String path)
+	{
+		path = path.replace(".class", ".java");
+		try (Response res = client.newCall(new Request.Builder()
+			.url(HttpUrl.get("https://raw.githubusercontent.com/runelite/plugin-hub/master/plugins/")
+				.newBuilder()
+				.addPathSegment(manifest.getInternalName())
+				.build())
+			.build())
+			.execute())
+		{
+			Properties p = new Properties();
+			p.load(res.body().charStream());
+			String repo = (String) p.get("repository");
+			return repo.substring(0, repo.length() - 4) + "/tree/" + manifest.getCommit() + "/src/main/java/" + path;
+		}
+		catch (IOException e)
+		{
+			throw new RuntimeException(e);
+		}
+	}
 
 	private static boolean test(ExternalPluginManifest manifest, String filePath, InputStream is) throws Exception
 	{
 		byte[] data = ByteStreams.toByteArray(is);
-		if (Bytes.indexOf(data, "net/runelite/api/widgets/WidgetInfo".getBytes(StandardCharsets.UTF_8)) != -1)
+		if (Bytes.indexOf(data, "net/runelite/client/ui/overlay/worldmap/WorldMapPoint".getBytes(StandardCharsets.UTF_8)) != -1)
 		{
-			log.warn("{}: {} match", manifest.getSupport(), filePath);
+			log.warn("{} match", pathToGH(manifest, filePath));
 			return true;
 		}
 		return false;
