@@ -53,4 +53,5 @@ public class ExternalPluginManifest
 	@EqualsAndHashCode.Exclude
 	private URL support;
 	private boolean hasIcon;
+	private boolean iconArchived;
 }

@@ -28,6 +28,8 @@ import com.google.common.base.Splitter;
 import com.google.common.base.Stopwatch;
 import com.google.common.base.Strings;
 import com.google.common.collect.Queues;
+import com.google.common.io.ByteSource;
+import com.google.common.io.ByteStreams;
 import com.google.common.io.Files;
 import com.google.gson.Gson;
 import java.io.BufferedReader;
@@ -35,7 +37,9 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -49,12 +53,20 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
+import java.util.zip.ZipOutputStream;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.pluginhub.uploader.ManifestDiff;
 import net.runelite.pluginhub.uploader.UploadConfiguration;
 import net.runelite.pluginhub.uploader.Util;
+import okhttp3.HttpUrl;
+import okhttp3.Request;
+import okhttp3.Response;
 import org.slf4j.helpers.FormattingTuple;
 import org.slf4j.helpers.MessageFormatter;
 
@@ -85,6 +97,10 @@ public class Packager implements Closeable
 	@Getter
 	private boolean failed;
 
+	private ZipOutputStream iconArchiveWriter;
+
+	private Object iconArchive;
+
 	private final StringBuilder buildSummary = new StringBuilder();
 
 	private ManifestDiff diff = new ManifestDiff();
@@ -98,6 +114,18 @@ public class Packager implements Closeable
 
 	public void buildPlugins() throws IOException
 	{
+		File iconArchive = null;
+		if (diff.isIgnoreOldManifest())
+		{
+			iconArchive = File.createTempFile("icons", ".zip.gz");
+			iconArchive.deleteOnExit();
+			iconArchiveWriter = new ZipOutputStream(new GZIPOutputStream(new FileOutputStream(iconArchive), false));
+			iconArchiveWriter.setLevel(0);
+			// we store stuff in the zip with no compression then gzip the whole thing
+			// because the files are generally already well compressed. We are only really
+			// compressing headers
+		}
+
 		Queue<File> buildQueue = Queues.synchronizedQueue(new ArrayDeque<>(buildList));
 		List<Thread> buildThreads = IntStream.range(0, 8)
 			.mapToObj(v ->
@@ -123,6 +151,12 @@ public class Packager implements Closeable
 			{
 				throw new RuntimeException(e);
 			}
+		}
+
+		if (iconArchiveWriter != null)
+		{
+			iconArchiveWriter.close();
+			uploadConfig.put(getIconArchiveURL(), iconArchive);
 		}
 
 		Gson gson = new Gson();
@@ -166,6 +200,39 @@ public class Packager implements Closeable
 
 					// outside the semaphore so the timing gets uploaded too
 					p.uploadLog(uploadConfig);
+				}
+
+				if (p.getIconFile().exists())
+				{
+					String entryName = p.getInternalName() + ".png";
+					if (iconArchiveWriter != null)
+					{
+						synchronized (this)
+						{
+							ZipEntry ze = new ZipEntry(entryName);
+							ze.setTime(0);
+							ze.setSize(p.getIconFile().length());
+							iconArchiveWriter.putNextEntry(ze);
+							Files.copy(p.getIconFile(), iconArchiveWriter);
+							iconArchiveWriter.closeEntry();
+						}
+						p.getManifest().setIconArchived(true);
+					}
+					else
+					{
+						ZipFile ia = getIconArchive();
+						ZipEntry ze = ia == null ? null : ia.getEntry(entryName);
+						boolean inArchive = ze != null && Files.asByteSource(p.getIconFile()).contentEquals(new ByteSource()
+						{
+							@Override
+							public InputStream openStream() throws IOException
+							{
+								return ia.getInputStream(ze);
+							}
+						});
+
+						p.getManifest().setIconArchived(inArchive);
+					}
 				}
 
 				diff.getAdd().add(p.getManifest());
@@ -226,6 +293,53 @@ public class Packager implements Closeable
 		{
 			buildSummary.append(fmt.getMessage()).append('\n');
 		}
+	}
+
+	private synchronized ZipFile getIconArchive() throws IOException
+	{
+		if (iconArchive instanceof ZipFile)
+		{
+			return (ZipFile) iconArchive;
+		}
+
+		if (iconArchive != null)
+		{
+			return null;
+		}
+
+		try (Response res = uploadConfig.getClient().newCall(new Request.Builder()
+			.url(getIconArchiveURL().newBuilder()
+				.addQueryParameter("c", System.nanoTime() + "")
+				.build())
+			.get()
+			.build())
+			.execute())
+		{
+			if (res.code() == 404)
+			{
+				iconArchive = new Object();
+				return null;
+			}
+
+			Util.check(res);
+			File tmp = File.createTempFile("icons", ".zip");
+			tmp.deleteOnExit();
+			try(OutputStream os = new FileOutputStream(tmp))
+			{
+				ByteStreams.copy(new GZIPInputStream(res.body().byteStream()), os);
+			}
+
+			ZipFile zf = new ZipFile(tmp);
+			iconArchive = zf;
+			return zf;
+		}
+	}
+
+	private HttpUrl getIconArchiveURL()
+	{
+		return uploadConfig.getUploadRepoRoot().newBuilder()
+			.addPathSegment("icons.zip.gz")
+			.build();
 	}
 
 	public String getBuildSummary()

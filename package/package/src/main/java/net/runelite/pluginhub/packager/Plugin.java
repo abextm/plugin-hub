@@ -140,6 +140,8 @@ public class Plugin implements Closeable
 
 	private final File jarFile;
 	private final File srcZipFile;
+
+	@Getter
 	private final File iconFile;
 
 	@Getter
