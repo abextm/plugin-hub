@@ -45,12 +45,49 @@ allprojects {
 	}
 
 	def buildDir = new File(System.getenv("runelite.pluginhub.package.buildDir"));
+	def version = System.getenv("runelite.pluginhub.package.runeliteVersion")
+
+	repositories {
+		mavenLocal()
+		maven {
+			url = 'https://repo.runelite.net'
+		}
+		mavenCentral()
+	}
+
+	configurations {
+		runelitePluginHubPlatform
+		runelitePluginHubRuntime {
+			extendsFrom runtimeClasspath
+		}
+	}
+
+	dependencies {
+		runelitePluginHubPlatform group: "net.runelite", name:"client", version: version
+	}
+
+	def runeLiteDeps = [
+		"client",
+		"runelite-api",
+		"http-api",
+	]
+	configurations.all {
+		resolutionStrategy.eachDependency { DependencyResolveDetails details ->
+			if (details.requested.group == "net.runelite" && details.requested.name in runeLiteDeps) {
+				details.useVersion version
+			}
+		}
+	}
 
 	task runelitePluginHubPackage(type: ShadowJar) {
 		destinationDir = buildDir
 		archiveName = "plugin.jar"
-		configurations = [project.configurations.runtimeClasspath]
+		configurations = [project.configurations.runelitePluginHubRuntime]
 		from sourceSets.main.output
+	}
+
+	configurations.runelitePluginHubPlatform.resolvedConfiguration.resolvedArtifacts.forEach {art ->
+		configurations.runelitePluginHubRuntime.exclude group: art.id.componentIdentifier.group, module: art.id.componentIdentifier.module
 	}
 
 	task runelitePluginHubManifest {
@@ -63,19 +100,4 @@ allprojects {
 		}
 	}
 
-	task configured {
-		def runeLiteDeps = [
-			"client",
-			"runelite-api",
-			"http-api",
-		]
-		def version = System.getenv("runelite.pluginhub.package.runeliteVersion")
-		configurations.all {
-			resolutionStrategy.eachDependency { DependencyResolveDetails details ->
-				if (details.requested.group == "net.runelite" && details.requested.name in runeLiteDeps) {
-					details.useVersion version
-				}
-			}
-		}
-	}
 }

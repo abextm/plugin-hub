@@ -138,7 +138,8 @@ public class Plugin implements Closeable
 	@VisibleForTesting
 	final File repositoryDirectory;
 
-	private final File jarFile;
+	@VisibleForTesting
+	final File jarFile;
 	private final File srcZipFile;
 	private final File iconFile;
 
@@ -803,6 +804,12 @@ public class Plugin implements Closeable
 			w.flush();
 		}
 		log.flush();
+	}
+
+	@SneakyThrows
+	public void dumpLog()
+	{
+		Files.copy(getLogFile().toPath(), System.out);
 	}
 
 	static Properties loadProperties(File path) throws IOException

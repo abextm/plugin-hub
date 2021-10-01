@@ -30,6 +30,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Properties;
+import java.util.function.Function;
+import java.util.jar.JarFile;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.pluginhub.uploader.Util;
 import org.junit.Assert;
@@ -125,11 +127,8 @@ public class PluginTest
 	{
 		try (Plugin p = createExamplePlugin("unverified-dependency"))
 		{
-			File buildFile = new File(p.repositoryDirectory, "build.gradle");
-			String buildSrc = Files.asCharSource(buildFile, StandardCharsets.UTF_8).read();
-			buildSrc = buildSrc.replace("dependencies {", "dependencies {\n" +
-				"	implementation 'org.apache.httpcomponents:httpclient:4.5.13'");
-			Files.asCharSink(buildFile, StandardCharsets.UTF_8).write(buildSrc);
+			patch(p, "build.gradle", b -> b.replace("dependencies {", "dependencies {\n" +
+				"	implementation 'org.apache.httpcomponents:httpclient:4.5.13'"));
 			p.build(Util.readRLVersion());
 			p.assembleManifest();
 			Assert.fail();
@@ -138,6 +137,50 @@ public class PluginTest
 		{
 			log.info("ok: ", e);
 		}
+	}
+
+	@Test
+	public void testVersionChange() throws InterruptedException, DisabledPluginException, PluginBuildException, IOException
+	{
+		try (Plugin p = createExamplePlugin("very-old"))
+		{
+			// this version doesn't have ExternalPluginManager
+			// also it would fail dep verification
+			patch(p, "build.gradle", b -> b.replaceAll("(def runeLiteVersion = ).*", "$1'1.5.43'"));
+			Files.move(
+				new File(p.repositoryDirectory, "src/test/java/com/example/ExamplePluginTest.java"),
+				new File(p.repositoryDirectory, "src/main/java/com/example/ExamplePluginTest.java"));
+			p.build(Util.readRLVersion());
+			p.assembleManifest();
+		}
+	}
+
+	@Test
+	public void testShadedPlatformDependency() throws InterruptedException, DisabledPluginException, PluginBuildException, IOException
+	{
+		try (Plugin p = createExamplePlugin("shaded-dependency"))
+		{
+			patch(p, "build.gradle", b -> b.replace("dependencies {",
+				"configurations.all { resolutionStrategy.disableDependencyVerification() }\n" +
+				"dependencies {\n" +
+				"	implementation 'com.google.guava:guava:31.0.1-jre'"));
+			p.build(Util.readRLVersion());
+			p.dumpLog();
+			p.assembleManifest();
+			try(JarFile jf = new JarFile(p.jarFile))
+			{
+				Assert.assertFalse("jar contains guava", jf.stream().anyMatch(je -> je.getName().startsWith("com/google")));
+				Assert.assertTrue("jar doesn't contain plugin", jf.stream().anyMatch(je -> je.getName().startsWith("com/example")));
+			}
+		}
+	}
+
+	private void patch(Plugin p, String name, Function<String, String> patcher) throws IOException
+	{
+		File buildFile = new File(p.repositoryDirectory, name);
+		String src = Files.asCharSource(buildFile, StandardCharsets.UTF_8).read();
+		src = patcher.apply(src);
+		Files.asCharSink(buildFile, StandardCharsets.UTF_8).write(src);
 	}
 
 	private static void writeProperties(Properties props, File fi) throws IOException

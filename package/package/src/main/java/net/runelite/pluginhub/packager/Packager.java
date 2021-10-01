@@ -177,7 +177,7 @@ public class Packager implements Closeable
 				p.writeLog("package failed\n", e);
 				if (!alwaysPrintLog)
 				{
-					Files.asCharSource(p.getLogFile(), StandardCharsets.UTF_8).copyTo(System.out);
+					p.dumpLog();
 				}
 
 				if (uploadConfig.isComplete())
@@ -194,7 +194,7 @@ public class Packager implements Closeable
 			{
 				if (alwaysPrintLog)
 				{
-					Files.asCharSource(p.getLogFile(), StandardCharsets.UTF_8).copyTo(System.out);
+					p.dumpLog();
 				}
 			}
 		}
