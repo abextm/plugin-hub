@@ -98,6 +98,7 @@ public class Packager implements Closeable
 
 	public void buildPlugins() throws IOException
 	{
+		log.info("cores {}", Runtime.getRuntime().availableProcessors());
 		Queue<File> buildQueue = Queues.synchronizedQueue(new ArrayDeque<>(buildList));
 		List<Thread> buildThreads = IntStream.range(0, 8)
 			.mapToObj(v ->
