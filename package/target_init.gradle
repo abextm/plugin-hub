@@ -47,8 +47,8 @@ allprojects {
 	def buildDir = new File(System.getenv("runelite.pluginhub.package.buildDir"));
 
 	task runelitePluginHubPackage(type: ShadowJar) {
-		destinationDir = buildDir
-		archiveName = "plugin.jar"
+		destinationDirectory = buildDir
+		archiveFileName = "plugin.jar"
 		configurations = [project.configurations.runtimeClasspath]
 		from sourceSets.main.output
 	}
