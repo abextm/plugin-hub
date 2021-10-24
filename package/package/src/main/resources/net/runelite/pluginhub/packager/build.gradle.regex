@@ -1,0 +1,39 @@
+plugins \{
+	id 'java'
+\}
+
+repositories \{
+	(mavenLocal\(\))?
+	maven \{
+		url = 'https?://repo.runelite.net'
+	\}
+	mavenCentral\(\)
+\}
+
+def runeLiteVersion = <STRING>
+
+dependencies \{
+	compileOnly group: 'net.runelite', name:'client', version: runeLiteVersion
+
+	compileOnly 'org.projectlombok:lombok:(?<lombokVersion>1.18.(4|20))'
+	annotationProcessor 'org.projectlombok:lombok:1.18.(4|20)'
+
+	testImplementation 'junit:junit:4.12'
+	(
+		testImplementation group: 'net.runelite', name:'client', version: runeLiteVersion
+	|
+		testImplementation 'org.slf4j:slf4j-simple:1.7.12'
+		testImplementation group: 'net.runelite', name:'client', version: runeLiteVersion, \{
+			exclude group: 'ch.qos.logback', module: 'logback-classic'
+		\}
+	)
+	(testImplementation group: 'net.runelite', name:'jshell', version: runeLiteVersion)?
+\}
+
+group = <STRING>
+version = (?<version><STRING>)
+sourceCompatibility = '1.8'
+
+tasks.withType\(JavaCompile\) \{
+	options.encoding = 'UTF-8'
+\}

@@ -39,10 +39,9 @@ dependencies {
 	implementation "com.google.code.gson:gson:2.8.5"
 	implementation project(":upload")
 
-	def lombok = "org.projectlombok:lombok:1.18.4";
-	compileOnly lombok
+	def lombok = "org.projectlombok:lombok:1.18.20";
+	implementation lombok
 	annotationProcessor lombok
-	testCompileOnly lombok
 	testAnnotationProcessor lombok
 
 	testImplementation "junit:junit:4.12"

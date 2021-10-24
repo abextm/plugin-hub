@@ -28,7 +28,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.CharMatcher;
 import com.google.common.base.Splitter;
 import com.google.common.base.Strings;
-import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableList;
 import com.google.common.hash.Hashing;
 import com.google.common.io.ByteStreams;
 import com.google.common.io.CountingOutputStream;
@@ -41,7 +41,6 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
@@ -54,7 +53,6 @@ import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -64,8 +62,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.jar.JarEntry;
 import java.util.jar.JarInputStream;
@@ -81,12 +77,8 @@ import lombok.SneakyThrows;
 import lombok.Value;
 import net.runelite.pluginhub.uploader.ExternalPluginManifest;
 import net.runelite.pluginhub.uploader.UploadConfiguration;
+import net.runelite.pluginhub.uploader.Util;
 import okhttp3.HttpUrl;
-import org.gradle.tooling.CancellationTokenSource;
-import org.gradle.tooling.GradleConnectionException;
-import org.gradle.tooling.GradleConnector;
-import org.gradle.tooling.ProjectConnection;
-import org.gradle.tooling.ResultHandler;
 import org.objectweb.asm.AnnotationVisitor;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
@@ -104,9 +96,13 @@ public class Plugin implements Closeable
 	private static final Pattern REPOSITORY_TEST = Pattern.compile("^(https://github\\.com/.*)\\.git$");
 	private static final Pattern COMMIT_TEST = Pattern.compile("^[a-fA-F0-9]{40}$");
 
-	private static final File TMP_ROOT;
-	private static final File GRADLE_HOME;
+	@VisibleForTesting
+	static final List<Compiler> COMPILERS = ImmutableList.of(
+		new SimpleCompiler(),
+		new GradleCompiler(Util.getRLVersion())
+	);
 
+	private static final File TMP_ROOT;
 	static
 	{
 		ImageIO.setUseCache(false);
@@ -115,12 +111,6 @@ public class Plugin implements Closeable
 		{
 			TMP_ROOT = Files.createTempDirectory("pluginhub-package").toFile();
 			TMP_ROOT.deleteOnExit();
-
-			GRADLE_HOME = new File(com.google.common.io.Files.asCharSource(new File(Packager.PACKAGE_ROOT, "build/gradleHome"), StandardCharsets.UTF_8).read().trim());
-			if (!GRADLE_HOME.exists())
-			{
-				throw new RuntimeException("gradle home has moved");
-			}
 		}
 		catch (IOException e)
 		{
@@ -133,12 +123,15 @@ public class Plugin implements Closeable
 	@Getter
 	private final String internalName;
 
+	@Getter
 	private final File buildDirectory;
 
-	@VisibleForTesting
-	final File repositoryDirectory;
+	@Getter
+	private final File repositoryDirectory;
 
+	@Getter
 	private final File jarFile;
+
 	private final File srcZipFile;
 	private final File iconFile;
 
@@ -162,6 +155,9 @@ public class Plugin implements Closeable
 	@Setter
 	private long buildTimeMS;
 
+	@Setter
+	private String version;
+
 	public Plugin(File pluginCommitDescriptor) throws IOException, DisabledPluginException, PluginBuildException
 	{
 		this.pluginCommitDescriptor = pluginCommitDescriptor;
@@ -174,7 +170,7 @@ public class Plugin implements Closeable
 				.withFile(pluginCommitDescriptor);
 		}
 
-		Properties cd = loadProperties(pluginCommitDescriptor);
+		Properties cd = Util.loadProperties(pluginCommitDescriptor);
 
 		String disabled = cd.getProperty("disabled");
 		if (!Strings.isNullOrEmpty(disabled))
@@ -243,6 +239,11 @@ public class Plugin implements Closeable
 		iconFile = new File(repositoryDirectory, "icon.png");
 	}
 
+	public File file(String name)
+	{
+		return new File(repositoryDirectory, name);
+	}
+
 	private void waitAndCheck(Process process, String name, long timeout, TimeUnit timeoutUnit) throws PluginBuildException
 	{
 		try
@@ -284,7 +285,7 @@ public class Plugin implements Closeable
 		waitAndCheck(gitcheckout, "git checkout", 2, TimeUnit.MINUTES);
 	}
 
-	public void build(String runeliteVersion) throws IOException, PluginBuildException
+	public void build() throws IOException, PluginBuildException
 	{
 		try (DirectoryStream<Path> ds = Files.newDirectoryStream(repositoryDirectory.toPath(), "**.{gradle,gradle.kts}"))
 		{
@@ -376,71 +377,12 @@ public class Plugin implements Closeable
 			}
 		}
 
-		try (InputStream is = Plugin.class.getResourceAsStream("verification-metadata.xml"))
+		for (Compiler compiler : COMPILERS)
 		{
-			File metadataFile = new File(repositoryDirectory, "gradle/verification-metadata.xml");
-			metadataFile.getParentFile().mkdir();
-			Files.copy(is, metadataFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-		}
-
-		try (ProjectConnection con = GradleConnector.newConnector()
-			.forProjectDirectory(repositoryDirectory)
-			.useInstallation(GRADLE_HOME)
-			.connect())
-		{
-			CancellationTokenSource cancel = GradleConnector.newCancellationTokenSource();
-			BlockingQueue<Object> queue = new ArrayBlockingQueue<>(1);
-			String buildSuccess = "success";
-
-			con.newBuild()
-				.withArguments(
-					"--no-build-cache",
-					"--console=plain",
-					"--init-script", new File("./package/target_init.gradle").getAbsolutePath())
-				.setEnvironmentVariables(ImmutableMap.of(
-					"runelite.pluginhub.package.lib", new File(Packager.PACKAGE_ROOT, "initLib/build/libs/initLib.jar").toString(),
-					"runelite.pluginhub.package.buildDir", buildDirectory.getAbsolutePath(),
-					"runelite.pluginhub.package.runeliteVersion", runeliteVersion))
-				.setJvmArguments("-Xmx768M", "-XX:+UseParallelGC")
-				.setStandardOutput(log)
-				.setStandardError(log)
-				.forTasks("runelitePluginHubPackage", "runelitePluginHubManifest")
-				.withCancellationToken(cancel.token())
-				.run(new ResultHandler<Void>()
-				{
-					@Override
-					public void onComplete(Void result)
-					{
-						queue.add(buildSuccess);
-					}
-
-					@Override
-					public void onFailure(GradleConnectionException failure)
-					{
-						queue.add(failure);
-					}
-				});
-			log.flush();
-
-			Object output = queue.poll(5, TimeUnit.MINUTES);
-			if (output == null)
+			if (compiler.compile(this))
 			{
-				cancel.cancel();
-				throw PluginBuildException.of(this, "build did not complete within 5 minutes");
+				break;
 			}
-			if (output == buildSuccess)
-			{
-				return;
-			}
-			else if (output instanceof GradleConnectionException)
-			{
-				throw PluginBuildException.of(this, "build failed", output);
-			}
-			throw new IllegalStateException(output.toString());
-		}
-		catch (InterruptedException e)
-		{
-			throw new RuntimeException(e);
 		}
 	}
 
@@ -450,22 +392,16 @@ public class Plugin implements Closeable
 		manifest.setCommit(commit);
 		manifest.setWarning(warning);
 
+		if (Strings.isNullOrEmpty(version))
 		{
-			Properties chunk = loadProperties(new File(buildDirectory, "chunk.properties"));
-
-			String version = chunk.getProperty("version");
-			if (Strings.isNullOrEmpty(version))
-			{
-				throw new IllegalStateException("version in empty");
-			}
-
-			if (version.endsWith("SNAPSHOT"))
-			{
-				version = commit.substring(0, 8);
-			}
-
-			manifest.setVersion(version);
+			throw new IllegalStateException("version in empty");
 		}
+
+		if (version.endsWith("SNAPSHOT"))
+		{
+			version = commit.substring(0, 8);
+		}
+		manifest.setVersion(version);
 
 		{
 			long size = jarFile.length();
@@ -570,7 +506,7 @@ public class Plugin implements Closeable
 			{
 				throw PluginBuildException.of(this, "runelite-plugin.properties must exist in the root of your repo");
 			}
-			Properties props = loadProperties(propFile);
+			Properties props = Util.loadProperties(propFile);
 
 			{
 				String displayName = (String) props.remove("displayName");
@@ -772,7 +708,8 @@ public class Plugin implements Closeable
 		return url.toString();
 	}
 
-	public void writeLog(String format, Object... args) throws IOException
+	@SneakyThrows
+	public void writeLog(String format, Object... args)
 	{
 		FormattingTuple fmt = MessageFormatter.arrayFormat(format, args);
 		log.write(fmt.getMessage().getBytes(StandardCharsets.UTF_8));
@@ -803,16 +740,6 @@ public class Plugin implements Closeable
 			w.flush();
 		}
 		log.flush();
-	}
-
-	static Properties loadProperties(File path) throws IOException
-	{
-		Properties props = new Properties();
-		try (FileInputStream fis = new FileInputStream(path))
-		{
-			props.load(fis);
-		}
-		return props;
 	}
 
 	@Override

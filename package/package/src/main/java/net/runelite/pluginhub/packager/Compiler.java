@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 Abex
+ * Copyright (c) 2021 Abex
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -22,32 +22,14 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-repositories {
-	mavenCentral()
-}
+package net.runelite.pluginhub.packager;
 
-dependencies {
-	implementation "com.google.code.findbugs:jsr305:3.0.2"
-	implementation "com.google.guava:guava:23.2-jre"
-	implementation "com.squareup.okhttp3:okhttp:3.14.9"
-	implementation "com.google.code.gson:gson:2.8.5"
+import java.io.IOException;
 
-	def lombok = "org.projectlombok:lombok:1.18.20";
-	compileOnly lombok
-	annotationProcessor lombok
-	testCompileOnly lombok
-	testAnnotationProcessor lombok
-
-	testImplementation "junit:junit:4.12"
-	testImplementation "com.squareup.okhttp3:mockwebserver:3.14.9"
-}
-
-task run(type: JavaExec) {
-	main = "net.runelite.pluginhub.uploader.Uploader"
-	classpath = sourceSets.main.runtimeClasspath
-	workingDir = new File(project.rootDir, "../")
-}
-
-test {
-	workingDir new File(project.rootDir, "../")
+public interface Compiler
+{
+	/**
+	 * @return true if this plugin is supported with this builder
+	 */
+	boolean compile(Plugin plugin) throws PluginBuildException, IOException;
 }
