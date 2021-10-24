@@ -40,7 +40,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
@@ -67,6 +69,8 @@ public class Packager implements Closeable
 	private Semaphore downloadSemaphore = new Semaphore(2);
 	private Semaphore buildSemaphore = new Semaphore(Runtime.getRuntime().availableProcessors());
 	private Semaphore uploadSemaphore = new Semaphore(2);
+
+	private Map<String, Long> waitTime = new HashMap<>();
 
 	private final List<File> buildList;
 
@@ -133,6 +137,8 @@ public class Packager implements Closeable
 		{
 			fos.write(diffJSON.getBytes(StandardCharsets.UTF_8));
 		}
+
+		waitTime.forEach((name, w) -> log.info("{}: {}ms", name, w));
 	}
 
 	private void buildPlugin(File plugin)
@@ -250,6 +256,7 @@ public class Packager implements Closeable
 
 	private Closeable section(Plugin p, String name, Semaphore s)
 	{
+		Stopwatch w = Stopwatch.createStarted();
 		try
 		{
 			s.acquire();
@@ -257,6 +264,11 @@ public class Packager implements Closeable
 		catch (InterruptedException e)
 		{
 			throw new RuntimeException(e);
+		}
+		finally
+		{
+			w.stop();
+			waitTime.compute(name, (k, v) -> (v == null ? 0 : v) + w.elapsed(TimeUnit.MILLISECONDS));
 		}
 		Stopwatch time = Stopwatch.createStarted();
 		return () ->
@@ -299,11 +311,11 @@ public class Packager implements Closeable
 		else if (!Strings.isNullOrEmpty(System.getenv("FORCE_BUILD")))
 		{
 			buildList = StreamSupport.stream(
-				Splitter.on(',')
-					.trimResults()
-					.omitEmptyStrings()
-					.split(System.getenv("FORCE_BUILD"))
-					.spliterator(), false)
+					Splitter.on(',')
+						.trimResults()
+						.omitEmptyStrings()
+						.split(System.getenv("FORCE_BUILD"))
+						.spliterator(), false)
 				.map(name -> new File(PLUGIN_ROOT, name))
 				.collect(Collectors.toList());
 		}
