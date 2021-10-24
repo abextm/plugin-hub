@@ -64,7 +64,7 @@ public class Packager implements Closeable
 	private static final File PLUGIN_ROOT = new File("./plugins");
 	public static final File PACKAGE_ROOT = new File("./package/").getAbsoluteFile();
 
-	private Semaphore downloadSemaphore = new Semaphore(2);
+	private Semaphore downloadSemaphore = new Semaphore(8);
 	private Semaphore buildSemaphore = new Semaphore(Runtime.getRuntime().availableProcessors());
 	private Semaphore uploadSemaphore = new Semaphore(2);
 

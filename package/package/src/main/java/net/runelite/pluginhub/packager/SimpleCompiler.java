@@ -60,7 +60,7 @@ public class SimpleCompiler implements Compiler
 	private final JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
 
 	@Override
-	public synchronized boolean compile(Plugin plugin) throws PluginBuildException, IOException
+	public boolean compile(Plugin plugin) throws PluginBuildException, IOException
 	{
 		Context c = new Context(plugin);
 		return c.compile();
