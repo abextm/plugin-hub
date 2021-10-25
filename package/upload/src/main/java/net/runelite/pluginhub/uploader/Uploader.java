@@ -54,7 +54,7 @@ public class Uploader
 			.read();
 		ManifestDiff diff = gson.fromJson(diffJSON, ManifestDiff.class);
 
-		try (UploadConfiguration uploadConfig = new UploadConfiguration().fromEnvironment(Util.readRLVersion()))
+		try (UploadConfiguration uploadConfig = new UploadConfiguration().fromEnvironment(Util.getRLVersion()))
 		{
 			SigningConfiguration signingConfig = SigningConfiguration.fromEnvironment();
 

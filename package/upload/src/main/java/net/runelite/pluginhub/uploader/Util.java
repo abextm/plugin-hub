@@ -26,8 +26,11 @@ package net.runelite.pluginhub.uploader;
 
 import com.google.common.io.Files;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Properties;
+import lombok.Getter;
 import okhttp3.Response;
 
 public class Util
@@ -35,6 +38,9 @@ public class Util
 	private Util()
 	{
 	}
+
+	@Getter(lazy = true)
+	private static final String rLVersion = readRLVersion();
 
 	public static void check(Response res) throws IOException
 	{
@@ -44,8 +50,25 @@ public class Util
 		}
 	}
 
-	public static String readRLVersion() throws IOException
+	public static String readRLVersion()
 	{
-		return Files.asCharSource(new File("./runelite.version"), StandardCharsets.UTF_8).read().trim();
+		try
+		{
+			return Files.asCharSource(new File("./runelite.version"), StandardCharsets.UTF_8).read().trim();
+		}
+		catch (IOException e)
+		{
+			throw new RuntimeException(e);
+		}
+	}
+
+	public static Properties loadProperties(File path) throws IOException
+	{
+		Properties props = new Properties();
+		try (FileInputStream fis = new FileInputStream(path))
+		{
+			props.load(fis);
+		}
+		return props;
 	}
 }

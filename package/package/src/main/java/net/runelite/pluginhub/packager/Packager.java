@@ -75,9 +75,6 @@ public class Packager implements Closeable
 
 	private final List<File> buildList;
 
-	@Getter
-	private final String runeliteVersion;
-
 	@Setter
 	private String previousRuneliteVersion;
 
@@ -101,7 +98,6 @@ public class Packager implements Closeable
 	{
 		this.buildList = buildList;
 		this.numTotal = buildList.size();
-		this.runeliteVersion = Util.readRLVersion();
 	}
 
 	public void buildPlugins() throws IOException
@@ -164,7 +160,7 @@ public class Packager implements Closeable
 				}
 				try (Closeable ignored = acquireBuild(p))
 				{
-					p.build(runeliteVersion);
+					p.build();
 					p.assembleManifest();
 				}
 				if (uploadConfig.isComplete())
@@ -404,10 +400,10 @@ public class Packager implements Closeable
 		boolean failed;
 		try (Packager pkg = new Packager(buildList))
 		{
-			pkg.getUploadConfig().fromEnvironment(pkg.getRuneliteVersion());
+			pkg.getUploadConfig().fromEnvironment(Util.getRLVersion());
 			pkg.setAlwaysPrintLog(!pkg.getUploadConfig().isComplete());
 			pkg.setIgnoreOldManifest(isBuildingAll);
-			pkg.setPreviousRuneliteVersion(previousRuneliteVersion == null ? pkg.getRuneliteVersion() : previousRuneliteVersion);
+			pkg.setPreviousRuneliteVersion(previousRuneliteVersion == null ? Util.getRLVersion() : previousRuneliteVersion);
 			pkg.buildPlugins();
 			failed = pkg.isFailed();
 			if (isBuildingAll)

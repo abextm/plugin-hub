@@ -1,5 +1,6 @@
 rootProject.name = "package-root"
 
 include "initLib"
+include "platformLib"
 include "upload"
 include "package"

@@ -24,6 +24,8 @@
  */
 package net.runelite.pluginhub.packager;
 
+import com.google.common.hash.HashFunction;
+import com.google.common.hash.Hashing;
 import com.google.common.io.Files;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -75,8 +77,14 @@ public class PluginTest
 	{
 		try (Plugin p = createExamplePlugin("example"))
 		{
-			p.build(Util.readRLVersion());
-			p.assembleManifest();
+			try
+			{
+				multiBuild(p);
+			}
+			finally
+			{
+				Files.asCharSource(p.getLogFile(), StandardCharsets.UTF_8).copyTo(System.out);
+			}
 		}
 	}
 
@@ -85,12 +93,11 @@ public class PluginTest
 	{
 		try (Plugin p = createExamplePlugin("missing-plugin"))
 		{
-			File propFile = new File(p.repositoryDirectory, "runelite-plugin.properties");
-			Properties props = Plugin.loadProperties(propFile);
+			File propFile = p.file("runelite-plugin.properties");
+			Properties props = Util.loadProperties(propFile);
 			props.setProperty("plugins", "com.nonexistent");
 			writeProperties(props, propFile);
-			p.build(Util.readRLVersion());
-			p.assembleManifest();
+			multiBuild(p);
 			Assert.fail();
 		}
 		catch (PluginBuildException e)
@@ -105,12 +112,11 @@ public class PluginTest
 	{
 		try (Plugin p = createExamplePlugin("empty-plugins"))
 		{
-			File propFile = new File(p.repositoryDirectory, "runelite-plugin.properties");
-			Properties props = Plugin.loadProperties(propFile);
+			File propFile = p.file("runelite-plugin.properties");
+			Properties props = Util.loadProperties(propFile);
 			props.setProperty("plugins", "");
 			writeProperties(props, propFile);
-			p.build(Util.readRLVersion());
-			p.assembleManifest();
+			multiBuild(p);
 			Assert.fail();
 		}
 		catch (PluginBuildException e)
@@ -125,18 +131,39 @@ public class PluginTest
 	{
 		try (Plugin p = createExamplePlugin("unverified-dependency"))
 		{
-			File buildFile = new File(p.repositoryDirectory, "build.gradle");
+			File buildFile = p.file("build.gradle");
 			String buildSrc = Files.asCharSource(buildFile, StandardCharsets.UTF_8).read();
 			buildSrc = buildSrc.replace("dependencies {", "dependencies {\n" +
 				"	implementation 'org.apache.httpcomponents:httpclient:4.5.13'");
 			Files.asCharSink(buildFile, StandardCharsets.UTF_8).write(buildSrc);
-			p.build(Util.readRLVersion());
-			p.assembleManifest();
+			multiBuild(p);
 			Assert.fail();
 		}
 		catch (PluginBuildException e)
 		{
 			log.info("ok: ", e);
+		}
+	}
+
+	private static void multiBuild(Plugin p) throws PluginBuildException, IOException
+	{
+		p.build();
+		p.assembleManifest();
+		HashFunction hash = Hashing.sha512();
+		String hashA = Files.asByteSource(p.getJarFile()).hash(hash).toString();
+
+		for (Compiler compiler : Plugin.COMPILERS)
+		{
+			p.setVersion(null);
+			if (!compiler.compile(p))
+			{
+				Assert.fail("does not support " + compiler.getClass());
+			}
+
+			Files.copy(p.getJarFile(), new File("/tmp/" + compiler.getClass().getSimpleName() + ".jar"));
+
+			String hashB = Files.asByteSource(p.getJarFile()).hash(hash).toString();
+			//Assert.assertEquals(hashA, hashB);
 		}
 	}
 
@@ -179,7 +206,7 @@ public class PluginTest
 		Assert.assertEquals(new ProcessBuilder(
 			new File("./create_new_plugin.py").getAbsolutePath(),
 			"--noninteractive",
-			"--output_directory", p.repositoryDirectory.getAbsolutePath(),
+			"--output_directory", p.getRepositoryDirectory().getAbsolutePath(),
 			"--name", "Example",
 			"--package", "com.example",
 			"--author", "Nobody",
