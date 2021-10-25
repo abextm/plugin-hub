@@ -43,6 +43,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.io.Writer;
@@ -72,6 +73,7 @@ import java.util.jar.JarInputStream;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
 import javax.annotation.Nullable;
 import javax.imageio.ImageIO;
@@ -82,6 +84,8 @@ import lombok.Value;
 import net.runelite.pluginhub.uploader.ExternalPluginManifest;
 import net.runelite.pluginhub.uploader.UploadConfiguration;
 import okhttp3.HttpUrl;
+import okhttp3.Request;
+import okhttp3.Response;
 import org.gradle.tooling.CancellationTokenSource;
 import org.gradle.tooling.GradleConnectionException;
 import org.gradle.tooling.GradleConnector;
@@ -99,6 +103,9 @@ public class Plugin implements Closeable
 	private static final long MIB = 1024 * 1024;
 	private static final long MAX_JAR_SIZE = 10 * MIB;
 	private static final long MAX_SRC_SIZE = 10 * MIB;
+
+	private static final String SOURCES_COMPLETE = "-sources.zip";
+	private static final String SOURCES_PARTIAL = "-sources-partial.zip";
 
 	private static final Pattern PLUGIN_INTERNAL_NAME_TEST = Pattern.compile("^[a-z0-9-]+$");
 	private static final Pattern REPOSITORY_TEST = Pattern.compile("^(https://github\\.com/.*)\\.git$");
@@ -133,14 +140,19 @@ public class Plugin implements Closeable
 	@Getter
 	private final String internalName;
 
+	private final boolean alwaysClone;
+
 	private final File buildDirectory;
 
 	@VisibleForTesting
 	final File repositoryDirectory;
 
 	private final File jarFile;
-	private final File srcZipFile;
 	private final File iconFile;
+
+	private final File srcZipFile;
+	private boolean srcZipIsComplete;
+	private boolean usedSourceZip;
 
 	@Getter
 	private final File logFile;
@@ -223,6 +235,7 @@ public class Plugin implements Closeable
 		defaultSupportURL = repoRoot + "/tree/" + commit;
 
 		warning = (String) cd.remove("warning");
+		alwaysClone = !Strings.isNullOrEmpty((String) cd.remove("alwaysClone"));
 
 		for (Map.Entry<Object, Object> extra : cd.entrySet())
 		{
@@ -264,8 +277,63 @@ public class Plugin implements Closeable
 		}
 	}
 
-	public void download() throws IOException, PluginBuildException
+	private boolean downloadViaSources(String previousRuneliteVersion, UploadConfiguration uploadConfig) throws IOException
 	{
+		try (Response res = uploadConfig.getClient().newCall(new Request.Builder()
+			.url(uploadConfig.getVersionlessRoot().newBuilder()
+				.addPathSegment(previousRuneliteVersion)
+				.addPathSegment(internalName)
+				.addPathSegment(commit + SOURCES_COMPLETE)
+				.build())
+			.get()
+			.build()).execute())
+		{
+			if (res.code() != 200)
+			{
+				return false;
+			}
+
+			try (ZipInputStream zis = new ZipInputStream(res.body().byteStream()))
+			{
+				for (ZipEntry ze; (ze = zis.getNextEntry()) != null; )
+				{
+					if (ze.isDirectory())
+					{
+						continue;
+					}
+
+					File f = new File(repositoryDirectory, ze.getName());
+					if (!f.toPath().normalize().startsWith(repositoryDirectory.toPath()))
+					{
+						writeLog("invalid source jar entry: {}", ze.getName());
+						return false;
+					}
+
+					f.getParentFile().mkdirs();
+					try (OutputStream os = new FileOutputStream(f))
+					{
+						ByteStreams.copy(zis, os);
+					}
+				}
+			}
+			return true;
+		}
+		catch (IOException e)
+		{
+			writeLog("unable to download via source jar", e);
+			return false;
+		}
+	}
+
+	public void download(@Nullable String previousRuneliteVersion, UploadConfiguration uploadConfig) throws IOException, PluginBuildException
+	{
+		if (!alwaysClone && previousRuneliteVersion != null && uploadConfig.isComplete()
+			&& downloadViaSources(previousRuneliteVersion, uploadConfig))
+		{
+			usedSourceZip = true;
+			return;
+		}
+
 		Process gitclone = new ProcessBuilder("git", "clone",
 			"--config", "advice.detachedHead=false",
 			"--filter", "tree:0", "--no-checkout",
@@ -274,7 +342,6 @@ public class Plugin implements Closeable
 			.redirectError(ProcessBuilder.Redirect.appendTo(logFile))
 			.start();
 		waitAndCheck(gitclone, "git clone", 2, TimeUnit.MINUTES);
-
 
 		Process gitcheckout = new ProcessBuilder("git", "checkout", commit + "^{commit}")
 			.redirectOutput(ProcessBuilder.Redirect.appendTo(logFile))
@@ -327,6 +394,7 @@ public class Plugin implements Closeable
 				long length;
 			}
 
+			srcZipIsComplete = true;
 			List<Entry> core = new ArrayList<>();
 			List<Entry> extras = new ArrayList<>();
 			Files.walkFileTree(repositoryDirectory.toPath(), new SimpleFileVisitor<Path>()
@@ -366,6 +434,7 @@ public class Plugin implements Closeable
 				if (cos.getCount() + e.length > MAX_SRC_SIZE)
 				{
 					writeLog("File \"{}\" is skipped from the source archive as it would make it too big ({} MiB)\n", e.zipPath, e.length / MIB);
+					srcZipIsComplete = false;
 					continue;
 				}
 
@@ -672,7 +741,7 @@ public class Plugin implements Closeable
 					unusedPlugins.removeAll(plugins);
 
 					throw PluginBuildException.of(this,
-						"Plugin class \"{}\" is missing from the output jar", className)
+							"Plugin class \"{}\" is missing from the output jar", className)
 						.withHelp(unusedPlugins.isEmpty()
 							? "All plugins must extend Plugin an have an @PluginDescriptor"
 							: ("Perhaps you wanted " + String.join(", ", unusedPlugins)))
@@ -739,15 +808,18 @@ public class Plugin implements Closeable
 			pluginRoot.newBuilder().addPathSegment(commit + ".jar").build(),
 			jarFile);
 
-		uploadConfig.put(
-			pluginRoot.newBuilder().addPathSegment(commit + "-sources.zip").build(),
-			srcZipFile);
-
-		if (manifest.isHasIcon())
+		if (!usedSourceZip)
 		{
 			uploadConfig.put(
-				pluginRoot.newBuilder().addPathSegment(commit + ".png").build(),
-				iconFile);
+				pluginRoot.newBuilder().addPathSegment(commit + (srcZipIsComplete ? SOURCES_COMPLETE : SOURCES_PARTIAL)).build(),
+				srcZipFile);
+
+			if (manifest.isHasIcon())
+			{
+				uploadConfig.put(
+					pluginRoot.newBuilder().addPathSegment(commit + ".png").build(),
+					iconFile);
+			}
 		}
 	}
 

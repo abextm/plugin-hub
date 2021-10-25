@@ -31,7 +31,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import lombok.Getter;
-import lombok.Setter;
 import lombok.experimental.Accessors;
 import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
@@ -45,7 +44,7 @@ public class UploadConfiguration implements Closeable
 {
 	private OkHttpClient client;
 
-	@Setter
+	private HttpUrl versionlessRoot;
 	private HttpUrl uploadRepoRoot;
 
 	public UploadConfiguration fromEnvironment(String runeliteVersion)
@@ -61,7 +60,8 @@ public class UploadConfiguration implements Closeable
 		String uploadRepoRootStr = System.getenv("REPO_ROOT");
 		if (!Strings.isNullOrEmpty(uploadRepoRootStr))
 		{
-			uploadRepoRoot = HttpUrl.parse(uploadRepoRootStr)
+			versionlessRoot = HttpUrl.parse(uploadRepoRootStr);
+			uploadRepoRoot = versionlessRoot
 				.newBuilder()
 				.addPathSegment(runeliteVersion)
 				.build();

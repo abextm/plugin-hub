@@ -28,6 +28,7 @@ import com.google.common.base.Splitter;
 import com.google.common.base.Stopwatch;
 import com.google.common.base.Strings;
 import com.google.common.collect.Queues;
+import com.google.common.io.ByteStreams;
 import com.google.common.io.Files;
 import com.google.gson.Gson;
 import java.io.BufferedReader;
@@ -76,6 +77,9 @@ public class Packager implements Closeable
 
 	@Getter
 	private final String runeliteVersion;
+
+	@Setter
+	private String previousRuneliteVersion;
 
 	@Getter
 	private final UploadConfiguration uploadConfig = new UploadConfiguration();
@@ -156,7 +160,7 @@ public class Packager implements Closeable
 			{
 				try (Closeable ignored = acquireDownload(p))
 				{
-					p.download();
+					p.download(previousRuneliteVersion, uploadConfig);
 				}
 				try (Closeable ignored = acquireBuild(p))
 				{
@@ -299,6 +303,7 @@ public class Packager implements Closeable
 	{
 		boolean isBuildingAll = false;
 		boolean testFailure = false;
+		String previousRuneliteVersion = null;
 		List<File> buildList;
 		if (args.length != 0)
 		{
@@ -324,7 +329,8 @@ public class Packager implements Closeable
 		}
 		else if (!Strings.isNullOrEmpty(System.getenv("PACKAGE_COMMIT_RANGE")))
 		{
-			Process gitdiff = new ProcessBuilder("git", "diff", "--name-only", System.getenv("PACKAGE_COMMIT_RANGE"))
+			String range = System.getenv("PACKAGE_COMMIT_RANGE");
+			Process gitdiff = new ProcessBuilder("git", "diff", "--name-only", range)
 				.redirectError(ProcessBuilder.Redirect.INHERIT)
 				.start();
 
@@ -375,6 +381,20 @@ public class Packager implements Closeable
 			{
 				throw new RuntimeException("git diff exited with " + gitdiff.exitValue());
 			}
+
+			String commit = range.substring(0, range.indexOf(".."));
+			Process gitShow = new ProcessBuilder("git", "show", commit + ":runelite.version")
+				.redirectError(ProcessBuilder.Redirect.INHERIT)
+				.start();
+
+			previousRuneliteVersion = new String(ByteStreams.toByteArray(gitShow.getInputStream()), StandardCharsets.UTF_8)
+				.trim();
+
+			gitShow.waitFor(1, TimeUnit.SECONDS);
+			if (gitShow.exitValue() != 0)
+			{
+				throw new RuntimeException("git show exited with " + gitShow.exitValue());
+			}
 		}
 		else
 		{
@@ -387,6 +407,7 @@ public class Packager implements Closeable
 			pkg.getUploadConfig().fromEnvironment(pkg.getRuneliteVersion());
 			pkg.setAlwaysPrintLog(!pkg.getUploadConfig().isComplete());
 			pkg.setIgnoreOldManifest(isBuildingAll);
+			pkg.setPreviousRuneliteVersion(previousRuneliteVersion == null ? pkg.getRuneliteVersion() : previousRuneliteVersion);
 			pkg.buildPlugins();
 			failed = pkg.isFailed();
 			if (isBuildingAll)
