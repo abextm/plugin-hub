@@ -67,6 +67,7 @@ import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import java.util.jar.JarEntry;
 import java.util.jar.JarInputStream;
 import java.util.regex.Matcher;
@@ -264,12 +265,12 @@ public class Plugin implements Closeable
 		}
 	}
 
-	public void download() throws IOException, PluginBuildException
+	public void download(Function<String, String> urlRewrite) throws IOException, PluginBuildException
 	{
 		Process gitclone = new ProcessBuilder("git", "clone",
 			"--config", "advice.detachedHead=false",
 			"--filter", "tree:0", "--no-checkout",
-			this.repositoryURL, repositoryDirectory.getAbsolutePath())
+			urlRewrite.apply(this.repositoryURL), repositoryDirectory.getAbsolutePath())
 			.redirectOutput(ProcessBuilder.Redirect.appendTo(logFile))
 			.redirectError(ProcessBuilder.Redirect.appendTo(logFile))
 			.start();

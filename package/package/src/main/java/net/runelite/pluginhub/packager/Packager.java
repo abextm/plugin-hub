@@ -57,6 +57,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.pluginhub.uploader.ManifestDiff;
 import net.runelite.pluginhub.uploader.UploadConfiguration;
 import net.runelite.pluginhub.uploader.Util;
+import okhttp3.OkHttpClient;
 import org.slf4j.helpers.FormattingTuple;
 import org.slf4j.helpers.MessageFormatter;
 
@@ -88,6 +89,9 @@ public class Packager implements Closeable
 
 	@Getter
 	private boolean failed;
+
+	private OkHttpClient proxyClient = new OkHttpClient();
+	private GitProxy githubProxy = new GitProxy(proxyClient, "https://github.com");
 
 	private final StringBuilder buildSummary = new StringBuilder();
 
@@ -156,7 +160,7 @@ public class Packager implements Closeable
 			{
 				try (Closeable ignored = acquireDownload(p))
 				{
-					p.download();
+					p.download(githubProxy::rewriteUrl);
 				}
 				try (Closeable ignored = acquireBuild(p))
 				{
@@ -290,6 +294,8 @@ public class Packager implements Closeable
 	public void close()
 	{
 		uploadConfig.close();
+		githubProxy.close();
+		proxyClient.connectionPool().evictAll();
 	}
 
 	public static void main(String... args) throws Exception
