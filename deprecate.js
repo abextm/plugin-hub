@@ -21,9 +21,21 @@ async function readPluginApi(manifest) {
 	return text.split("\n");
 }
 
+async function amap(limit, array, asyncMapper) {
+	let out = new Array(array.length);
+	let todo = new Array(array.length).fill(0).map((_, i) => i);
+	await Promise.all(new Array(limit).fill(0).map(async () => {
+		for (; todo.length > 0; ) {
+			let i = todo.pop();
+			out[i] = await asyncMapper(array[i]);
+		}
+	}));
+	return out;
+}
+
 const byUsage = (async() => {
 	let out = new Map();
-	await Promise.all((await manifest).map(async (plugin) => {
+	await amap(64, await manifest, async (plugin) => {
 		let api = await readPluginApi(plugin);
 		for (let k of api) {
 			if (k == "") {
@@ -35,7 +47,7 @@ const byUsage = (async() => {
 			}
 			ps.push(plugin.internalName);
 		}
-	}));
+	});
 	let es = [...out.entries()];
 	es.sort(([a], [b]) => a.localeCompare(b));
 	return es
