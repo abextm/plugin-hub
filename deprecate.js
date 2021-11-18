@@ -4,7 +4,7 @@ const version = (async() => {
 	return version.trim();
 })();
 
-const root = "https://abex.sauville.org/externalplugin/"
+const root = "https://repo.runelite.net/plugins/"
 
 const manifest = (async() => {
 	let req = await fetch(`${root}${await version}/manifest.js`);
