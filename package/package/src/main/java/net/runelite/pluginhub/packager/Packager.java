@@ -109,7 +109,7 @@ public class Packager implements Closeable
 
 	public void buildPlugins() throws IOException
 	{
-		if (apiFilesVersion != null)
+		//if (apiFilesVersion != null)
 		{
 			loadApi();
 		}
@@ -183,7 +183,7 @@ public class Packager implements Closeable
 				try (Closeable ignored = acquireBuild(p))
 				{
 					p.build(runeliteVersion);
-					p.assembleManifest();
+					p.assembleManifest(previousApi);
 				}
 				String logURL = "";
 				if (uploadConfig.isComplete())
@@ -465,6 +465,9 @@ public class Packager implements Closeable
 			}
 			pkg.buildPlugins();
 			failed = pkg.isFailed();
+
+			log.info("all missing:\n{}", Plugin.globalMissing.stream().sorted().collect(Collectors.joining("\n")));
+			log.info("all failed:\n{}", Plugin.globalFailed.stream().sorted().collect(Collectors.joining("\n")));
 			if (isBuildingAll)
 			{
 				String summary = pkg.getBuildSummary();

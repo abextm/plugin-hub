@@ -84,6 +84,7 @@ import lombok.SneakyThrows;
 import lombok.Value;
 import net.runelite.pluginhub.apirecorder.API;
 import net.runelite.pluginhub.apirecorder.ClassRecorder;
+import net.runelite.pluginhub.apirecorder.ClassReferenceTester;
 import net.runelite.pluginhub.uploader.ExternalPluginManifest;
 import net.runelite.pluginhub.uploader.UploadConfiguration;
 import net.runelite.pluginhub.uploader.Util;
@@ -99,11 +100,15 @@ import org.objectweb.asm.AnnotationVisitor;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.Opcodes;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.slf4j.helpers.FormattingTuple;
 import org.slf4j.helpers.MessageFormatter;
 
 public class Plugin implements Closeable
 {
+	private static final Logger logger = LoggerFactory.getLogger(Plugin.class);
+
 	private static final long MIB = 1024 * 1024;
 	private static final long MAX_JAR_SIZE = 10 * MIB;
 	private static final long MAX_SRC_SIZE = 10 * MIB;
@@ -119,6 +124,9 @@ public class Plugin implements Closeable
 
 	private static final File TMP_ROOT;
 	private static final File GRADLE_HOME;
+
+	static Set<String> globalMissing = new HashSet<>();
+	static Set<String> globalFailed = new HashSet<>();
 
 	static
 	{
@@ -516,7 +524,7 @@ public class Plugin implements Closeable
 		}
 	}
 
-	public void assembleManifest() throws IOException, PluginBuildException
+	public void assembleManifest(API currentAPI) throws IOException, PluginBuildException
 	{
 		manifest.setInternalName(internalName);
 		manifest.setCommit(commit);
@@ -592,6 +600,16 @@ public class Plugin implements Closeable
 		Set<String> pluginClasses = new HashSet<>();
 		Set<String> jarClasses = new HashSet<>();
 		{
+			API pluginConsumedAPI = null;
+			ClassReferenceTester refTester = null;
+			if (apiFile.exists())
+			{
+				try (FileInputStream fis = new FileInputStream(apiFile))
+				{
+					pluginConsumedAPI = API.decode(fis);
+				}
+				refTester = new ClassReferenceTester(pluginConsumedAPI);
+			}
 			ClassRecorder builtinApi = new ClassRecorder();
 
 			try (JarInputStream jis = new JarInputStream(new FileInputStream(jarFile)))
@@ -605,7 +623,8 @@ public class Plugin implements Closeable
 					}
 
 					byte[] classData = ByteStreams.toByteArray(jis);
-					new ClassReader(classData).accept(new ClassVisitor(Opcodes.ASM7, builtinApi)
+					ClassReader cr = new ClassReader(classData);
+					cr.accept(new ClassVisitor(Opcodes.ASM7, builtinApi)
 					{
 						boolean extendsPlugin;
 						String name;
@@ -621,7 +640,7 @@ public class Plugin implements Closeable
 									.withFile(fileName);
 							}
 
-							jarClasses.add(name.replace('/', '.'));
+							jarClasses.add(name);
 
 							extendsPlugin = "net/runelite/client/plugins/Plugin".equals(superName);
 							this.name = name;
@@ -639,18 +658,49 @@ public class Plugin implements Closeable
 							return null;
 						}
 					}, ClassReader.SKIP_CODE);
+
+					if (refTester != null)
+					{
+						refTester.recordReferences(cr);
+					}
 				}
 			}
 
 			if (apiFile.exists())
 			{
-				// we can record api symbols from the plugin's own dependencies, we need to strip those
-				ByteArrayOutputStream out = new ByteArrayOutputStream();
-				try (FileInputStream fis = new FileInputStream(apiFile))
+				jarClasses.forEach(refTester::ignoreClass);
+				if (!refTester.getFailures().isEmpty())
 				{
-					API.encode(out, API.decode(fis).missingFrom(builtinApi.getApi()));
+					writeLog("failed to record:\n{}\n", refTester.getFailures());
+					writeLog("recorded:\n{}\n", pluginConsumedAPI.getApis().stream().collect(Collectors.joining("\n")));
+					logger.info("{}: failed to record:\n{}", internalName, refTester.getFailures());
+
+					synchronized (globalFailed)
+					{
+						globalFailed.addAll(refTester.getFailures());
+					}
 				}
-				Files.write(apiFile.toPath(), out.toByteArray());
+
+				Set<String> missing = pluginConsumedAPI.missingFrom(builtinApi.getApi())
+					.filter(a -> !currentAPI.getApis().contains(a))
+					.collect(Collectors.toSet());
+
+				if (!missing.isEmpty())
+				{
+					synchronized (globalMissing)
+					{
+						globalMissing.addAll(missing);
+					}
+
+					logger.info("{}: missing:\n{}", internalName, missing);
+					writeLog("missing:\n{}\n", missing);
+				}
+
+				// we can record api symbols from the plugin's own dependencies, we need to strip those
+				try (FileOutputStream fos = new FileOutputStream(apiFile))
+				{
+					API.encode(fos, pluginConsumedAPI.missingFrom(builtinApi.getApi()));
+				}
 			}
 		}
 
@@ -751,7 +801,7 @@ public class Plugin implements Closeable
 						continue;
 					}
 
-					if (jarClasses.contains(className))
+					if (jarClasses.contains(className.replace('.', '/')))
 					{
 						throw PluginBuildException.of(this, "Plugin class \"{}\" is not a valid Plugin", className)
 							.withHelp("All plugins must extend Plugin an have an @PluginDescriptor")
