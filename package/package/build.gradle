@@ -23,14 +23,14 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 repositories {
-	maven {
-		url "https://repo.gradle.org/gradle/libs-releases-local/"
-	}
 	mavenCentral()
+	maven {
+		url "https://repo.gradle.org/gradle/libs-releases/"
+	}
 }
 
 dependencies {
-	implementation "org.gradle:gradle-tooling-api:6.6.1"
+	implementation "org.gradle:gradle-tooling-api:7.3.2"
 	implementation "org.slf4j:slf4j-simple:1.7.10"
 	implementation "com.google.code.findbugs:jsr305:3.0.2"
 	implementation "com.google.guava:guava:23.2-jre"
