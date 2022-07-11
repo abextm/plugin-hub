@@ -42,6 +42,7 @@ import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.PackageElement;
 import javax.lang.model.element.TypeElement;
+import javax.lang.model.element.TypeParameterElement;
 import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.ArrayType;
 import javax.lang.model.type.DeclaredType;
@@ -229,7 +230,6 @@ class RecordingTreeScanner extends TreePathScanner<Void, Void>
 				case LOCAL_VARIABLE:
 				case PARAMETER:
 				case EXCEPTION_PARAMETER:
-				case TYPE_PARAMETER:
 					return;
 				default:
 					unexpected(element);
@@ -242,7 +242,7 @@ class RecordingTreeScanner extends TreePathScanner<Void, Void>
 				modifiers(element),
 				typeDescriptor(element));
 		}
-		else
+		else if (!(element instanceof TypeParameterElement))
 		{
 			unexpected(element);
 		}
