@@ -229,6 +229,7 @@ class RecordingTreeScanner extends TreePathScanner<Void, Void>
 				case LOCAL_VARIABLE:
 				case PARAMETER:
 				case EXCEPTION_PARAMETER:
+				case TYPE_PARAMETER:
 					return;
 				default:
 					unexpected(element);
