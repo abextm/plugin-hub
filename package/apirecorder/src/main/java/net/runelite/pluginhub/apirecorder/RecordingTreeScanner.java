@@ -128,6 +128,7 @@ class RecordingTreeScanner extends TreePathScanner<Void, Void>
 	{
 		if (element instanceof TypeElement)
 		{
+			if (true) return true;
 			// there isn't a particularly nice way to find where a symbol is resolved from in the public api
 			JavaFileObject classfile = ((Symbol.ClassSymbol) element).classfile;
 			if (classfile == null || classfile.getKind() == JavaFileObject.Kind.SOURCE)
