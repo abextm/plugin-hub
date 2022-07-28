@@ -14,6 +14,11 @@ const manifest = (async() => {
 	return JSON.parse(text);
 })();
 
+const installs = (async() => {
+	let req = await fetch(`https://api.runelite.net/runelite-${await version}/pluginhub`);
+	return await req.json();
+})();
+
 async function readPluginApi(manifest) {
 	let req = await fetch(`${root}${await version}/${manifest.internalName}/${manifest.commit}.api`);
 	let data = pako.inflate(new Uint8Array(await req.arrayBuffer()));
@@ -70,6 +75,7 @@ class AutoMap extends Map {
 (async () => {
 	let mf = await manifest;
 	let usages = await byUsage;
+	let installMap = await installs;
 
 	document.body.addEventListener("click", async ev => {
 		if (ev?.target?.classList?.contains("plugin")) {
@@ -113,6 +119,11 @@ class AutoMap extends Map {
 </div>
 `,
 	};
+
+	function sortPlugins(plugins) {
+		plugins.sort((a, b) => (installMap[b] || 0) - (installMap[a] || 0));
+		return plugins;
+	}
 	
 	class Search {
 		static numEntries = 1;
@@ -157,13 +168,12 @@ class AutoMap extends Map {
 			}
 
 			this.error = error;
-			this.allMatches = Object.freeze([...allMatches]);
+			this.allMatches = Object.freeze(sortPlugins([...allMatches]));
 			this.symbols = Object.freeze(symbols);
 			if (groups.size > 0) {
 				groups = [...groups.entries()].map(([name, group]) => {
 					group = [...group.entries()].map(([name, plugins]) => {
-						plugins = [...plugins];
-						plugins.sort();
+						plugins = sortPlugins([...plugins]);
 						return Object.freeze([name, Object.freeze(plugins)]);
 					})
 					group.sort(([, a], [, b]) => b.length - a.length)
@@ -182,6 +192,11 @@ class AutoMap extends Map {
 		static component = {
 			props: ["entry"],
 			components: {List},
+			methods: {
+				getInstalls(name) {
+					return installMap[name] || "";
+				}
+			},
 			template: `
 <div class="search">
 	<input v-model="entry.regex" placeholder="^Lnet/runelite/foo" @focus="entry.focused=true" @blur="entry.focused=false">
@@ -189,11 +204,11 @@ class AutoMap extends Map {
 	<div v-if="!entry.error">
 		<List v-if="entry.groups" v-for="grouping of entry.groups" :list="grouping[1]" :name="'groups by ' + grouping[0]" :active="true" v-slot="{item}">
 			<List :list="item[1]" :name="item[0]" v-slot="{item}">
-				<span class="plugin">{{item}}</span>
+				<span class="plugin">{{item}} ({{getInstalls(item)}})</span>
 			</List>
 		</List>
 		<List :list="entry.allMatches" :active="!entry.groups" name="plugins" v-slot="{item}">
-			<span class="plugin">{{item}}</span>
+			<span class="plugin">{{item}} ({{getInstalls(item)}})</span>
 		</List>
 		<List :list="entry.symbols" name="symbols" v-slot="{item}">
 			<code>{{item}}</code>
