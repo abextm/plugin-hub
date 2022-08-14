@@ -80,7 +80,7 @@ class AutoMap extends Map {
 	document.body.addEventListener("click", async ev => {
 		if (ev?.target?.classList?.contains("plugin")) {
 			ev.preventDefault();
-			let name = ev.target.textContent;
+			let name = ev.target.dataset.name;
 			let req = await fetch(`https://raw.githubusercontent.com/runelite/plugin-hub/master/plugins/${name}`);
 			let text = await req.text();
 			let prop = {};
@@ -204,11 +204,11 @@ class AutoMap extends Map {
 	<div v-if="!entry.error">
 		<List v-if="entry.groups" v-for="grouping of entry.groups" :list="grouping[1]" :name="'groups by ' + grouping[0]" :active="true" v-slot="{item}">
 			<List :list="item[1]" :name="item[0]" v-slot="{item}">
-				<span class="plugin">{{item}} ({{getInstalls(item)}})</span>
+				<span class="plugin" :data-name="item">{{item}} <span class="noselect">({{getInstalls(item)}})</span></span>
 			</List>
 		</List>
 		<List :list="entry.allMatches" :active="!entry.groups" name="plugins" v-slot="{item}">
-			<span class="plugin">{{item}} ({{getInstalls(item)}})</span>
+			<span class="plugin" :data-name="item">{{item}} <span class="noselect">({{getInstalls(item)}})</span></span>
 		</List>
 		<List :list="entry.symbols" name="symbols" v-slot="{item}">
 			<code>{{item}}</code>
