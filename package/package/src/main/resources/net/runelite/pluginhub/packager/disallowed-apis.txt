@@ -1,0 +1,2 @@
+Lnet/runelite/api/Client;.getVar(I)I:ab
+Lnet/runelite/api/Client;.getVar(Lnet/runelite/api/VarPlayer;)I:ab
