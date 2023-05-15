@@ -74,6 +74,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
+import java.util.zip.ZipException;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
 import javax.annotation.Nullable;
@@ -561,6 +562,10 @@ public class Plugin implements Closeable
 					w.flush();
 					zos.closeEntry();
 				}
+			}
+			catch (ZipException e)
+			{
+				throw PluginBuildException.of(this, "invalid jar", e);
 			}
 			jarFile = tmpJar;
 

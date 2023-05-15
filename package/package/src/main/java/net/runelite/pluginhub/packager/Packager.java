@@ -130,7 +130,7 @@ public class Packager implements Closeable
 			}
 		}
 
-		if (apiFilesVersion == null && uploadConfig.isComplete())
+		if (uploadConfig.isComplete())
 		{
 			uploadConfig.mkdirs(uploadConfig.getRoot().newBuilder().addPathSegment(UploadConfiguration.DIR_JAR).build());
 			uploadConfig.mkdirs(uploadConfig.getRoot().newBuilder().addPathSegment(UploadConfiguration.DIR_ICON).build());
@@ -468,20 +468,6 @@ public class Packager implements Closeable
 			{
 				isBuildingAll = true;
 				buildList = listAllPlugins();
-
-				String commit = range.substring(0, range.indexOf(".."));
-				Process gitShow = new ProcessBuilder("git", "show", commit + ":runelite.version")
-					.redirectError(ProcessBuilder.Redirect.INHERIT)
-					.start();
-
-				apiFilesVersion = new String(ByteStreams.toByteArray(gitShow.getInputStream()), StandardCharsets.UTF_8)
-					.trim();
-
-				gitShow.waitFor(1, TimeUnit.SECONDS);
-				if (gitShow.exitValue() != 0)
-				{
-					throw new RuntimeException("git show exited with " + gitShow.exitValue());
-				}
 			}
 
 			gitdiff.waitFor(1, TimeUnit.SECONDS);
@@ -495,16 +481,30 @@ public class Packager implements Closeable
 			throw new RuntimeException("missing env vars");
 		}
 
+		if (apiFilesVersion == null && !Strings.isNullOrEmpty(range))
+		{
+			String commit = range.substring(0, range.indexOf(".."));
+			Process gitShow = new ProcessBuilder("git", "show", commit + ":runelite.version")
+				.redirectError(ProcessBuilder.Redirect.INHERIT)
+				.start();
+
+			apiFilesVersion = new String(ByteStreams.toByteArray(gitShow.getInputStream()), StandardCharsets.UTF_8)
+				.trim();
+
+			gitShow.waitFor(1, TimeUnit.SECONDS);
+			if (gitShow.exitValue() != 0)
+			{
+				throw new RuntimeException("git show exited with " + gitShow.exitValue());
+			}
+		}
+
 		boolean failed;
 		try (Packager pkg = new Packager(buildList))
 		{
 			pkg.getUploadConfig().fromEnvironment(pkg.getRuneliteVersion());
 			pkg.setAlwaysPrintLog(!pkg.getUploadConfig().isComplete());
 			pkg.setIgnoreOldManifest(isBuildingAll);
-			if (!pkg.getRuneliteVersion().equals(apiFilesVersion))
-			{
-				pkg.setApiFilesVersion(apiFilesVersion);
-			}
+			pkg.setApiFilesVersion(apiFilesVersion);
 			pkg.buildPlugins();
 			failed = pkg.isFailed();
 			if (isBuildingAll)
