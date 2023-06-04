@@ -7,7 +7,7 @@ const version = (async() => {
 const root = "https://repo.runelite.net/plugins/"
 
 const manifest = (async() => {
-	let req = await fetch(`${root}${await version}/manifest.js`);
+	let req = await fetch(`${root}manifest/${await version}_full.js`);
 	let buf = new DataView(await req.arrayBuffer());
 	let skip = 4 + buf.getUint32(0);
 	let text = new TextDecoder("utf-8").decode(new Uint8Array(buf.buffer.slice(skip)));
@@ -20,7 +20,7 @@ const installs = (async() => {
 })();
 
 async function readPluginApi(manifest) {
-	let req = await fetch(`${root}${await version}/${manifest.internalName}/${manifest.commit}.api`);
+	let req = await fetch(`${root}api/${manifest.internalName}_${manifest.jarHash}.api`);
 	let data = pako.inflate(new Uint8Array(await req.arrayBuffer()));
 	let text = new TextDecoder("utf-8").decode(data);
 	return text.split("\n");
@@ -40,7 +40,7 @@ async function amap(limit, array, asyncMapper) {
 
 const byUsage = (async() => {
 	let out = new Map();
-	await amap(64, await manifest, async (plugin) => {
+	await amap(64, (await manifest).jars, async (plugin) => {
 		let api = await readPluginApi(plugin);
 		for (let k of api) {
 			if (k == "") {
