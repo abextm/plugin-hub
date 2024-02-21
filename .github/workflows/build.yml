@@ -46,7 +46,7 @@ jobs:
     - name: build
       env:
         REPO_CREDS: ${{ secrets.REPO_CREDS }}
-        REPO_ROOT: ${{ secrets.REPO_ROOT }}
+        REPO_ROOT: ${{ vars.REPO_ROOT }}
         # workflow_dispatch
         FORCE_BUILD: ${{ github.event.inputs.FORCE_BUILD }}
         COMMIT_RANGE: ${{ github.event.inputs.COMMIT_RANGE }}
@@ -105,7 +105,7 @@ jobs:
     - name: upload
       env:
         REPO_CREDS: ${{ secrets.REPO_CREDS }}
-        REPO_ROOT: ${{ secrets.REPO_ROOT }}
+        REPO_ROOT: ${{ vars.REPO_ROOT }}
         SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
       run: |
         pushd package
