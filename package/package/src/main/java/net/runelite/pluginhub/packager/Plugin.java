@@ -499,6 +499,7 @@ public class Plugin implements Closeable
 				.withArguments(
 					"--no-build-cache",
 					"--console=plain",
+					"--warning-mode", "all",
 					"--init-script", new File("./package/target_init.gradle").getAbsolutePath())
 				.setEnvironmentVariables(ImmutableMap.of(
 					"runelite.pluginhub.package.apirecorder", new File(Packager.PACKAGE_ROOT, "apirecorder/build/libs/apirecorder.jar").toString(),
