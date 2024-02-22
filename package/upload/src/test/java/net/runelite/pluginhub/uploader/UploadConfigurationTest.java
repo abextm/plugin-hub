@@ -25,10 +25,7 @@
 package net.runelite.pluginhub.uploader;
 
 import java.io.IOException;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
 import okhttp3.RequestBody;
-import okhttp3.Response;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
@@ -45,19 +42,10 @@ public class UploadConfigurationTest
 		server.enqueue(new MockResponse().setResponseCode(520).setBody("some cloudflare html"));
 		server.enqueue(new MockResponse().setResponseCode(200).setBody("ok"));
 
-		OkHttpClient client = new UploadConfiguration()
-			.setClient("Aladdin:open sesame")
-			.getClient();
+		UploadConfiguration cfg = new UploadConfiguration()
+			.setRepoCredentials("Aladdin:open sesame");
 
-		try (Response res = client.newCall(new Request.Builder()
-			.put(RequestBody.create(null, "foo"))
-			.url(server.url("/"))
-			.build())
-			.execute())
-		{
-			Assert.assertEquals(200, res.code());
-			Assert.assertEquals("ok", res.body().string());
-		}
+		cfg.put(server.url("/"), RequestBody.create(null, "foo"));
 
 		RecordedRequest r2 = server.takeRequest();
 		Assert.assertEquals("Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==", r2.getHeader("Authorization"));

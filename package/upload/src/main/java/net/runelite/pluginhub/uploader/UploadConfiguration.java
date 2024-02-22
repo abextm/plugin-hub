@@ -25,6 +25,7 @@
 package net.runelite.pluginhub.uploader;
 
 import com.google.common.base.Strings;
+import com.google.common.collect.ImmutableMap;
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
@@ -32,17 +33,21 @@ import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.security.SignatureException;
+import java.util.Arrays;
 import java.util.Base64;
+import java.util.stream.Collectors;
 import lombok.Getter;
 import lombok.experimental.Accessors;
+import lombok.extern.slf4j.Slf4j;
 import okhttp3.HttpUrl;
+import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
 import okio.BufferedSource;
 
-@Getter
+@Slf4j
 @Accessors(chain = true)
 public class UploadConfiguration implements Closeable
 {
@@ -56,13 +61,44 @@ public class UploadConfiguration implements Closeable
 	public static final String MANIFEST_TYPE_FULL = "_full.js";
 	public static final String MANIFEST_TYPE_LITE = "_lite.js";
 
-	private OkHttpClient client;
+	private static final String REPO_AUTH_HEADER = "Authorization";
+
+	@Getter
+	private OkHttpClient client = new OkHttpClient.Builder()
+		.addInterceptor(chain ->
+		{
+			Request userAgentRequest = chain.request()
+				.newBuilder()
+				.header("User-Agent", "RuneLite-PluginHub-Package/2")
+				.build();
+
+			Response res = null;
+			for (int attempts = 0; attempts < 2; attempts++)
+			{
+				res = chain.proceed(userAgentRequest);
+				if (res.code() == 520)
+				{
+					res.close();
+					continue;
+				}
+
+				break;
+			}
+
+			return res;
+		})
+		.build();
 
 	@Getter
 	private HttpUrl root;
 
 	@Getter
 	private String runeLiteVersion;
+
+	private String repoAuthValue;
+
+	private String cfAuthToken;
+	private String cfZoneID;
 
 	public UploadConfiguration fromEnvironment(String runeLiteVersion)
 	{
@@ -72,7 +108,10 @@ public class UploadConfiguration implements Closeable
 			return this;
 		}
 
-		setClient(System.getenv("REPO_CREDS"));
+		setRepoCredentials(System.getenv("REPO_CREDS"));
+
+		cfAuthToken = System.getenv("CF_TOKEN");
+		cfZoneID = System.getenv("CF_ZONE_ID");
 
 		String uploadRepoRootStr = System.getenv("REPO_ROOT");
 		if (!Strings.isNullOrEmpty(uploadRepoRootStr))
@@ -89,43 +128,24 @@ public class UploadConfiguration implements Closeable
 		return client != null && root != null;
 	}
 
-	public UploadConfiguration setClient(String credentials)
+	public UploadConfiguration setRepoCredentials(String credentials)
 	{
-		String repoAuth = "Basic " + Base64.getEncoder().encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
-		client = new OkHttpClient.Builder()
-			.addInterceptor(chain ->
-			{
-				Request userAgentRequest = chain.request()
-					.newBuilder()
-					.header("User-Agent", "RuneLite-PluginHub-Package/2")
-					.header("Authorization", repoAuth)
-					.build();
-
-				Response res = null;
-				for (int attempts = 0; attempts < 2; attempts++)
-				{
-					res = chain.proceed(userAgentRequest);
-					if (res.code() == 520)
-					{
-						res.close();
-						continue;
-					}
-
-					break;
-				}
-
-				return res;
-			})
-			.build();
+		this.repoAuthValue = "Basic " + Base64.getEncoder().encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
 
 		return this;
 	}
 
 	public void put(HttpUrl path, File data) throws IOException
 	{
+		this.put(path, RequestBody.create(null, data));
+	}
+
+	public void put(HttpUrl path, RequestBody body) throws IOException
+	{
 		try (Response res = client.newCall(new Request.Builder()
 				.url(path)
-				.put(RequestBody.create(null, data))
+				.header(REPO_AUTH_HEADER, repoAuthValue)
+				.put(body)
 				.build())
 			.execute())
 		{
@@ -149,6 +169,7 @@ public class UploadConfiguration implements Closeable
 					.url(url.newBuilder()
 						.addPathSegment("/")
 						.build())
+					.header(REPO_AUTH_HEADER, repoAuthValue)
 					.method("MKCOL", null)
 					.build())
 				.execute())
@@ -204,6 +225,37 @@ public class UploadConfiguration implements Closeable
 		catch (NoSuchAlgorithmException | SignatureException | InvalidKeyException e)
 		{
 			throw new RuntimeException(e);
+		}
+	}
+
+	public boolean purgeCache(HttpUrl... url)
+	{
+		if (Strings.isNullOrEmpty(cfAuthToken) || Strings.isNullOrEmpty(cfZoneID))
+		{
+			return false;
+		}
+
+		String body = Util.GSON.toJson(ImmutableMap.of("files", Arrays.stream(url)
+			.map(u -> u.toString())
+			.collect(Collectors.toList())));
+
+		try (Response res = client.newCall(new Request.Builder()
+			.url(HttpUrl.parse("https://api.cloudflare.com/client/v4/zones/").newBuilder()
+				.addPathSegment(cfZoneID)
+				.addPathSegment("purge_cache")
+				.build())
+			.header("Authorization", "Bearer " + cfAuthToken)
+			.post(RequestBody.create(MediaType.parse("application/json"), body))
+			.build()).execute())
+		{
+			Util.check(res);
+
+			return true;
+		}
+		catch (IOException e)
+		{
+			log.warn("Failed to purge cache", e);
+			return false;
 		}
 	}
 

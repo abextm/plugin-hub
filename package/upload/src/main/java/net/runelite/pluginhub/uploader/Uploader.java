@@ -34,10 +34,11 @@ import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.security.SignatureException;
 import java.util.Comparator;
-import okhttp3.Request;
+import lombok.extern.slf4j.Slf4j;
+import okhttp3.HttpUrl;
 import okhttp3.RequestBody;
-import okhttp3.Response;
 
+@Slf4j
 public class Uploader
 {
 	public static void main(String... args) throws IOException, NoSuchAlgorithmException, SignatureException, InvalidKeyException
@@ -80,12 +81,19 @@ public class Uploader
 			PluginHubManifest.ManifestLite manifestLite = new PluginHubManifest.ManifestLite();
 			manifestLite.setJars(manifestFull.getJars());
 
-			putSigned(UploadConfiguration.MANIFEST_TYPE_FULL, manifestFull, uploadConfig, signingConfig);
-			putSigned(UploadConfiguration.MANIFEST_TYPE_LITE, manifestLite, uploadConfig, signingConfig);
+			HttpUrl manifestFullURL = manifestUrl(uploadConfig, UploadConfiguration.MANIFEST_TYPE_FULL);
+			HttpUrl manifestLiteURL = manifestUrl(uploadConfig, UploadConfiguration.MANIFEST_TYPE_LITE);
+			uploadConfig.put(manifestFullURL, RequestBody.create(null, encode(manifestFull, signingConfig)));
+			uploadConfig.put(manifestLiteURL, RequestBody.create(null, encode(manifestLite, signingConfig)));
+
+			if (uploadConfig.purgeCache(manifestFullURL, manifestLiteURL))
+			{
+				log.info("successfully purged cache");
+			}
 		}
 	}
 
-	private static void putSigned(String manifestType, Object manifest, UploadConfiguration uploadConfig, SigningConfiguration signingConfig)
+	private static byte[] encode(Object manifest, SigningConfiguration signingConfig)
 		throws IOException, NoSuchAlgorithmException, SignatureException, InvalidKeyException
 	{
 		byte[] data = Util.GSON.toJson(manifest).getBytes(StandardCharsets.UTF_8);
@@ -95,18 +103,14 @@ public class Uploader
 		new DataOutputStream(out).writeInt(sig.length);
 		out.write(sig);
 		out.write(data);
-		byte[] signed = out.toByteArray();
+		return out.toByteArray();
+	}
 
-		try (Response res = uploadConfig.getClient().newCall(new Request.Builder()
-				.url(uploadConfig.getRoot().newBuilder()
-					.addPathSegment(UploadConfiguration.DIR_MANIFEST)
-					.addPathSegment(uploadConfig.getRuneLiteVersion() + manifestType)
-					.build())
-				.put(RequestBody.create(null, signed))
-				.build())
-			.execute())
-		{
-			Util.check(res);
-		}
+	private static HttpUrl manifestUrl(UploadConfiguration uploadConfig, String manifestType)
+	{
+		return uploadConfig.getRoot().newBuilder()
+			.addPathSegment(UploadConfiguration.DIR_MANIFEST)
+			.addPathSegment(uploadConfig.getRuneLiteVersion() + manifestType)
+			.build();
 	}
 }

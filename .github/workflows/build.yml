@@ -107,6 +107,8 @@ jobs:
         REPO_CREDS: ${{ secrets.REPO_CREDS }}
         REPO_ROOT: ${{ vars.REPO_ROOT }}
         SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+        CF_TOKEN: ${{ secrets.CF_TOKEN }}
+        CF_ZONE_ID: ${{ secrets.CF_ZONE_ID }}
       run: |
         pushd package
         ./gradlew :upload:run

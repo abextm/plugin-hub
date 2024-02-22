@@ -31,6 +31,7 @@ dependencies {
 	implementation "com.google.guava:guava:23.2-jre"
 	implementation "com.squareup.okhttp3:okhttp:3.14.9"
 	implementation "com.google.code.gson:gson:2.8.5"
+	implementation "org.slf4j:slf4j-simple:1.7.10"
 
 	def lombok = "org.projectlombok:lombok:1.18.30";
 	compileOnly lombok
