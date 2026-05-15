@@ -19,7 +19,6 @@ jobs:
     # any forks that predate this repo having an action will have actions
     # enabled by default, which will fail in a lot of cases because the branch
     # is new, which makes the differential build fail
-    if: github.event_name != 'push' || github.repository_owner == 'runelite'
     runs-on: ubuntu-24.04
     steps:
     - uses: actions/checkout@v6
@@ -33,7 +32,7 @@ jobs:
         java-version: 11
     - name: fetch packager
       env:
-        PACKAGER_URL: "https://github.com/runelite/plugin-hub-tooling/releases/download/v2/bundle.tar.zst"
+        PACKAGER_URL: "https://github.com/runelite/plugin-hub-tooling/releases/download/nightly/bundle.tar.zst"
       run: |
         set -exu
         curl --location --fail --retry 4 --max-time 30 --output bundle.tar.zst "$PACKAGER_URL"
@@ -91,7 +90,7 @@ jobs:
         name: jars
         path: /tmp/jars
   upload:
-    if: (github.event_name != 'push' || github.repository_owner == 'runelite') && github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request'
     needs: build
     concurrency: upload
     runs-on: ubuntu-22.04
@@ -103,7 +102,7 @@ jobs:
         persist-credentials: false
     - name: fetch packager
       env:
-        PACKAGER_URL: "https://github.com/runelite/plugin-hub-tooling/releases/download/v2/bundle.tar.zst"
+        PACKAGER_URL: "https://github.com/runelite/plugin-hub-tooling/releases/download/nightly/bundle.tar.zst"
       run: |
         set -exu
         curl --location --fail --retry 4 --max-time 30 --output bundle.tar.zst "$PACKAGER_URL"
